@@ -117,14 +117,14 @@ def main():
 
     questions_list = ['What is the methodology used in this paper?','How does this paper improve dynamics robotic motion?']
 
-    cwd = os.getcwd()
-    try:
-        subprocess.check_output([sys.executable, 'ingest.py'], 
-                                                    cwd=cwd, 
-                                                    )
-    except Exception as e:
-        print(f'Error: {e}')
-        return -1
+    # cwd = os.getcwd()
+    # try:
+    #     subprocess.check_output([sys.executable, 'ingest.py'], 
+    #                                                 cwd=cwd, 
+    #                                                 )
+    # except Exception as e:
+    #     print(f'Error: {e}')
+    #     return -1
 
     # load the model
     load_model()
