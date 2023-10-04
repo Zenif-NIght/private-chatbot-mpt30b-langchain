@@ -12,10 +12,11 @@ from langchain.vectorstores import Chroma
 from constants import CHROMA_SETTINGS
 # remove the db folder
 import os 
-import shutil
 import re
 import pandas as pd
 import tqdm
+import subprocess
+import sys
 
 load_dotenv()
 
@@ -44,6 +45,7 @@ def run_questions_list(question_list, llm):
     return_list = {}
     # Interactive questions and answers over your docs
     for query in question_list:
+        start_time = time.time()
         if query == "exit":
             break
         if query.strip() == "":
@@ -65,12 +67,16 @@ def run_questions_list(question_list, llm):
             print(answer)
 
             # Print the relevant sources used for the answer
-            sources_used ={}
+            sources_used = ''
             for document in docs:
                 print("\n> " + document.metadata["source"] + ":")
                 print(document.page_content)
-                sources_used[f'{document.metadata["source"]}'] = document.page_content
-            return_list[query] = [answer, sources_used]
+                # sources_used[f'{document.metadata["source"]}'] = document.page_content
+                sources_used += f'{document.metadata["source"]}\n'
+                sources_used += f'{document.page_content}\n\n'
+            return_list[query] = answer +'\n\n\n'+ sources_used
+            time_passed = round(time.time() - start_time, 2)    
+            print(f"\n> Took {time_passed} s. or {round(time_passed / 60, 2)} min.")
         except Exception as e:
             print(str(e))
             raise
@@ -93,7 +99,7 @@ def load_model():
                 callbacks=[StreamingStdOutCallbackHandler()],
                 config={"temperature": 0.1, "stop": ["<|im_end|>", "|<"]},
                 # gpu layers
-                gpu_layers=50000000,
+                gpu_layers=10_000_000,
 
             )
             return True
@@ -108,43 +114,36 @@ def load_model():
 
 
 def main():
-    df_all = pd.read_csv("/root/PRIVATE-DRLQ-Survey/scripts/paper_info.csv")
-    # df_all['AI Response']= ""
-    # df_all['Tokenized Keywords'] = ""
-
 
     questions_list = ['What is the methodology used in this paper?','How does this paper improve dynamics robotic motion?']
 
+    cwd = os.getcwd()
+    try:
+        subprocess.check_output([sys.executable, 'ingest.py'], 
+                                                    cwd=cwd, 
+                                                    )
+    except Exception as e:
+        print(f'Error: {e}')
+        return -1
 
-    paper_foler = "/root/PRIVATE-DRLQ-Survey/papers"
+    # load the model
+    load_model()
+    # run the questions
+    resulty_dict = run_questions_list(questions_list, llm)
+
+    
+    def save_qa_dict_to_markdown(qa_dict, output_file):
+        with open(output_file, 'w', encoding='utf-8') as file:
+            for question, answer in qa_dict.items():
+                # Write the question in markdown format
+                file.write(f"### Q: {question}\n\n")
+                
+                # Write the answer in markdown format
+                file.write(f"A: {answer}\n\n")
 
 
-    # Iterate through DataFrame rows and generate Markdown files
-    for index, row in tqdm.tqdm(df_all.iterrows(), total=df_all.shape[0]):
-        # clean up the db folder
-        if os.path.exists("db"):
-            shutil.rmtree("db")
-        # clean up the source doc folder
-        shutil.rmtree("source_documents")
-        os.mkdir("source_documents")
-        # copy the pdf to the source doc folder
-        # /root/PRIVATE-DRLQ-Survey/papers/Towards jumping locomotion for quadruped robots on the moon.pdf
-        shutil.copy(f"{paper_foler}/{row['title']}.pdf", "source_documents")
+    save_qa_dict_to_markdown(resulty_dict, 'qa_output.md')
 
-
-        os.system("python3.10 ingest.py")
-        print(f'Reading: {row["title"]} ')
-
-
-        # load the model
-        load_model()
-        # run the questions
-        resulty_dict = run_questions_list(questions_list, llm)
-
-        row['AI Response'] = pd.DataFrame.from_dict(resulty_dict).to_json()
-
-    # save the csv
-    df_all.to_csv("/root/PRIVATE-DRLQ-Survey/scripts/AI_responce.csv", index=False)
 
 
 if __name__ == "__main__":
